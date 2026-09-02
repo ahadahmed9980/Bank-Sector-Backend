@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
-const userSchema = mongoose.connect(
+const bcrypt = require("bcrypt");
+const userSchema = new mongoose.Schema(
   {
     email: {
       type: String,
@@ -24,10 +25,24 @@ const userSchema = mongoose.connect(
         /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{6,}$/,
         "Password must be at least 6 characters and contain letters, numbers, and a special character",
       ],
-      select: false,
+      select: false, //user ki query lagai select false kia to password bydefual nahi aaye ga
     },
   },
   {
     timestamps: true,
   },
 );
+userSchema.pre("save", async function (next) {
+  if (!this.isModified("password")) {
+    return ;
+  }
+  const hash = await bcrypt.hash(this.password, 10);
+  this.password = hash;
+  return ;
+});
+//compare password function
+userSchema.methods.comparePassword = async function (password) {
+  return await bcrypt.compare(password, this.password);
+};
+const userModel = mongoose.model("user", userSchema);
+module.exports = userModel;
