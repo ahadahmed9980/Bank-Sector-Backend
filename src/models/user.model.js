@@ -2,6 +2,10 @@ const mongoose = require("mongoose");
 const bcrypt = require("bcrypt");
 const userSchema = new mongoose.Schema(
   {
+    name: {
+      type: String,
+      required: [true, "name is required"],
+    },
     email: {
       type: String,
       required: [true, "email is required"],
@@ -13,10 +17,7 @@ const userSchema = new mongoose.Schema(
       ],
       unique: [true, "email already register"],
     },
-    name: {
-      type: String,
-      required: [true, "name is required"],
-    },
+
     password: {
       type: String,
       required: [true, "password is required"],
@@ -27,22 +28,26 @@ const userSchema = new mongoose.Schema(
       ],
       select: false, //user ki query lagai select false kia to password bydefual nahi aaye ga
     },
+    verified: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: true,
   },
 );
-userSchema.pre("save", async function (next) {
+userSchema.pre("save", async function () {
   if (!this.isModified("password")) {
-    return ;
+    return;
   }
   const hash = await bcrypt.hash(this.password, 10);
   this.password = hash;
-  return ;
+  return;
 });
 //compare password function
 userSchema.methods.comparePassword = async function (password) {
   return await bcrypt.compare(password, this.password);
-};
+  };
 const userModel = mongoose.model("user", userSchema);
 module.exports = userModel;
