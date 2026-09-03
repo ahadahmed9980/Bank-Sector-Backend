@@ -1,8 +1,11 @@
 const userModel = require("../models/user.model");
+const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const sessionModel = require("../models/session.model");
-import { sendEmail } from "../services/email.service.js";
-import { generateOtp, getOtpHtml } from "../utils/utils.js";
+const { sendEmail } = require("../services/email.service");
+const { generateOtp, getOtpHtml } = require("../utils/otp");
+const otpModel = require("../models/otpModel");
+//reg user
 async function userRegister(req, res) {
   const { name, email, password } = req.body;
   try {
@@ -20,7 +23,31 @@ async function userRegister(req, res) {
         message: "user already exist",
       });
     }
+    const user = await userModel.create({
+      name,
+      email,
+      password,
+    });
+    //gen otp
+    const otp = generateOtp();
+    const html = getOtpHtml(otp);
+    const otpHash = await bcrypt.hash(otp, 10);
+    await otpModel.create({
+      email: user.email,
+      user: user._id,
+      otpHash: otpHash,
+    });
+    await sendEmail(email, "OTP Verification", `Your OTP code is ${otp}`, html);
+    return res.status(201).json({
+      message: "user created successfully",
+      user: {
+        id: user._id,
+        email: user.email,
+        verified: user.verified,
+      },
+    });
   } catch (error) {
+    console.error("Register Error:", error);
     if (error.name === "ValidationError") {
       return res.status(400).json({
         message: Object.values(error.errors).map((err) => err.message),
@@ -32,6 +59,11 @@ async function userRegister(req, res) {
     });
   }
 }
+//login api
+async function userLogin(req, res) {
+  const { name, email, password } = req.body;
+}
+
 //refreshToken
 async function refreshToken(req, res) {
   const incomingRefreshToken =
