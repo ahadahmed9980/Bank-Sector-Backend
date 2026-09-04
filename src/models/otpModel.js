@@ -15,7 +15,7 @@ const otpSchema = new mongoose.Schema(
       type: String,
       required: [true, "OTP hash is required"],
     },
-    // Yeh field 5 minutes (300 seconds) baad document auto-delete kar degi
+   
     createdAt: {
       type: Date,
       default: Date.now,

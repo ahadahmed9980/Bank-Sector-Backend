@@ -53,3 +53,4 @@ sessionSchema.methods.verifyToken = async function (incomingRefreshToken) {
 
 //creating model
 const sessionModel = mongoose.model("session", sessionSchema);
+module.exports = sessionModel;

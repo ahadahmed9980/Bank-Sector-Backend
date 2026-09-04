@@ -26,7 +26,7 @@ const userSchema = new mongoose.Schema(
         /^(?=.*[A-Za-z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{6,}$/,
         "Password must be at least 6 characters and contain letters, numbers, and a special character",
       ],
-      select: false, //user ki query lagai select false kia to password bydefual nahi aaye ga
+      //  select: false,//user ki query lagai select false kia to password bydefual nahi aaye ga
     },
     verified: {
       type: Boolean,
