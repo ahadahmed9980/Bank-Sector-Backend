@@ -16,6 +16,7 @@ const userSchema = new mongoose.Schema(
         "kindly enter a valid email address",
       ],
       unique: [true, "email already register"],
+      index: true,
     },
 
     password: {
@@ -48,6 +49,6 @@ userSchema.pre("save", async function () {
 //compare password function
 userSchema.methods.comparePassword = async function (password) {
   return await bcrypt.compare(password, this.password);
-  };
+};
 const userModel = mongoose.model("user", userSchema);
 module.exports = userModel;

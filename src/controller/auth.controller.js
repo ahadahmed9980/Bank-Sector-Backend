@@ -158,7 +158,9 @@ async function userLogin(req, res) {
 //rotateRefreshToken and gen new accss token
 async function rotateRefreshToken(req, res) {
   const incomingRefreshToken =
-    req.body.refreshToken || req.cookies.refreshToken;
+    req.body.refreshToken ||
+    req.cookies.refreshToken ||
+    req.headers.authorization?.split(" ")[1];
   if (!incomingRefreshToken) {
     return res.status(401).json({
       message: "refresh Token required",
@@ -254,7 +256,7 @@ async function verifyEmail(req, res) {
       });
     }
     // compare otp
-    const isValid = bcrypt.compare(otp, latestOtp.otpHash);
+    const isValid = await bcrypt.compare(otp, latestOtp.otpHash);
     if (!isValid) {
       return res.status(400).json({
         message: "invalid OTP",
