@@ -136,8 +136,8 @@ async function userLogin(req, res) {
         id: user._id,
         email: user.email,
       },
-      userRefreshToken: refreshToken,
-      userAccessToken: accessToken,
+      refreshToken: refreshToken,
+      accessToken: accessToken,
     });
   } catch (error) {
     console.error("Register Error:", error);
@@ -226,6 +226,7 @@ async function rotateRefreshToken(req, res) {
       message: "access token refresh successfully",
 
       accessToken: accessToken,
+      refreshToken: newRefreshToken,
     });
   } catch (err) {
     console.log("error", err);

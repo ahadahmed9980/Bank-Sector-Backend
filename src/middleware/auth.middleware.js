@@ -2,7 +2,11 @@ const userModel = require("../models/user.model");
 const jwt = require("jsonwebtoken");
 const sessionModel = require("../models/session.model");
 async function authMiddleware(req, res, next) {
-  const token = req.cookies.token || req.headers.authorization?.split(" ")[1];
+  const token =
+    req.headers.authorization?.split(" ")[1] ||
+    req.cookies?.accessToken ||
+    req.cookies?.token ||
+    req.body?.token;
   if (!token) {
     return res.status(401).json({
       message: "unAuthorized Access, token is missing",
@@ -32,7 +36,8 @@ async function authMiddleware(req, res, next) {
   } catch (err) {
     console.log("error from auth middleware", err);
     return res.status(401).json({
-      message: "Unauthorized access token is invalid or revoke",
+      message: "error from auth middleware",
+      error: err.message,
     });
   }
 }
