@@ -27,7 +27,7 @@ const transactionSchema = new mongoose.Schema(
       required: [true, "amount is required for transaction"],
       min: [1, "Transaction amount cannot be negative"],
     },
-    idempotanceKet: {
+    idempotanceKey: {
       type: String,
       required: [true, "key is required for transaction"],
       unique: true,
