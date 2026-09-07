@@ -1,14 +1,31 @@
 const transactionModel = require("../models/transaction.model");
 const mongoose = require("mongoose");
+const {
+  sendDebitAlert,
+  sendCreditAlert,
+} = require("../services/email.service");
+
 const userModel = require("../models/user.model");
 const ledgerModel = require("../models/leager.model");
 const accountModel = require("../models/account.model");
 async function createTransaction(req, res) {
   const { fromAccount, toAccount, amount, idempotanceKey } = req.body;
   //validate request
-  if (!fromAccount || !toAccount || !amount || idempotanceKey) {
+  if (!fromAccount || !toAccount || !amount || !idempotanceKey) {
     return res.status(400).json({
       message: "fromAccount, toAccount, amount, idempotanceKey are required",
+    });
+  }
+  //amount validation 
+  if (amount <= 0) {
+  return res.status(400).json({
+    message: "Amount must be greater than 0",
+  });
+}
+//same account check 
+  if (fromAccount === toAccount) {
+    return res.status(400).json({
+      message: "Sender and receiver account cannot be same",
     });
   }
   const senderAccount = await accountModel.findOne({
@@ -16,7 +33,7 @@ async function createTransaction(req, res) {
   });
   const reciverAccount = await accountModel.findOne({
     _id: toAccount,
-  });
+  }).populate("user");
   if (!senderAccount || !reciverAccount) {
     return res.status(400).json({
       message: "invald sender or reciver account",
@@ -61,7 +78,7 @@ async function createTransaction(req, res) {
     });
   }
   //checking sender balance from ledger
-  const balance = await fromAccount.getBalance();
+  const balance = await senderAccount.getBalance();
   if (balance < amount) {
     return res.status(400).json({
       message: `insufficient balance Current balance is,${balance}, requested amount is ${amount}`,
@@ -71,43 +88,82 @@ async function createTransaction(req, res) {
   //is mai start transaction walal part mongo db hamen deta hai jis mai agar to saaray steps complete ho gaye
   //  to he db mai save ho ga agar aun mai say aik bhi comnplete na howa to koi bhi complete na ho or db mai save na ho
   const session = await mongoose.startSession();
-  session.startTransaction();
-  //creating transaction
-  const transaction = await transactionModel.create(
-    {
-      senderAccount,
-      reciverAccount,
-      amount,
-      idempotanceKey,
-      status: "PENDING",
-    },
-    { session },
-  );
-  //creating document of debit ledger for sender account
-  const debitledgerEntry = await ledgerModel.create(
-    {
-      account: senderAccount,
-      amount: amount,
-      transaction: transaction._id,
-      type: "DEBIT",
-    },
-    {
-      session,
-    },
-  );
-  //creating document of credit ledger for reciver account
-  const creditledgerEntry = await ledgerModel.create(
-    {
-      account: senderAccount,
-      amount: amount,
-      transaction: transaction._id,
-      type: "DEBIT",
-    },
-    {
-      session,
-    },
-  );
-  transaction.status = "COMPLETED";
-  await transaction.save({ session });
-  await session.commitTransaction();
+  try {
+    session.startTransaction();
+    //creating transaction
+    const transaction = await transactionModel.create(
+      {
+        fromAccount,
+        toAccount,
+        amount,
+        idempotanceKey,
+        status: "PENDING",
+      },
+      { session },
+    );
+    //creating document of debit ledger for sender account
+    const debitledgerEntry = await ledgerModel.create(
+      {
+        account: senderAccount._id,
+        amount: amount,
+        transaction: transaction._id,
+        type: "DEBIT",
+      },
+      {
+        session,
+      },
+    );
+    //creating document of credit ledger for reciver account
+    const creditledgerEntry = await ledgerModel.create(
+      {
+        account: reciverAccount._id,
+        amount: amount,
+        transaction: transaction._id,
+        type: "CREDIT",
+      },
+      {
+        session,
+      },
+    );
+    transaction.status = "COMPLETED";
+    await transaction.save({ session });
+    await session.commitTransaction();
+    //sending email for debit alert
+    //sending email for credit alert
+  //  Promise.all([
+      // 1. Sender ko Debit Email
+     sendDebitAlert({
+  senderEmail: req.user.email,
+  senderName: req.user.name,
+  amount: transaction.amount,
+  transactionId: transaction._id.toString(),
+  receiverName: reciverAccount.user.name,
+}).catch((err) => {
+  console.log("Debit email failed:", err);
+});
+
+sendCreditAlert({
+  receiverEmail: reciverAccount.user.email,
+  receiverName: reciverAccount.user.name,
+  amount: transaction.amount,
+  transactionId: transaction._id.toString(),
+  senderName: req.user.name,
+}).catch((err) => {
+  console.log("Credit email failed:", err);
+});
+
+return res.status(201).json({
+  message: "Transaction completed successfully",
+  transaction,
+});
+  } catch (err) {
+    console.log(err);
+    await session.abortTransaction();
+    return res.status(500).json({
+      message: "error while doing transaction",
+    });
+  } finally {
+    await session.endSession();
+  }
 }
+module.exports = { createTransaction };
