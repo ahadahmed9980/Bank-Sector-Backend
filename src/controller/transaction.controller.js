@@ -72,6 +72,7 @@ async function createTransaction(req, res) {
   //  to he db mai save ho ga agar aun mai say aik bhi comnplete na howa to koi bhi complete na ho or db mai save na ho
   const session = await mongoose.startSession();
   session.startTransaction();
+  //creating transaction
   const transaction = await transactionModel.create(
     {
       senderAccount,
@@ -82,4 +83,31 @@ async function createTransaction(req, res) {
     },
     { session },
   );
+  //creating document of debit ledger for sender account
+  const debitledgerEntry = await ledgerModel.create(
+    {
+      account: senderAccount,
+      amount: amount,
+      transaction: transaction._id,
+      type: "DEBIT",
+    },
+    {
+      session,
+    },
+  );
+  //creating document of credit ledger for reciver account
+  const creditledgerEntry = await ledgerModel.create(
+    {
+      account: senderAccount,
+      amount: amount,
+      transaction: transaction._id,
+      type: "DEBIT",
+    },
+    {
+      session,
+    },
+  );
+  transaction.status = "COMPLETED";
+  await transaction.save({ session });
+  await session.commitTransaction();
 }
