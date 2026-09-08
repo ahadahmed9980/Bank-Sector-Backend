@@ -10,6 +10,7 @@ async function createTransaction(req, res) {
   const { fromAccount, toAccount, amount, idempotanceKey } = req.body;
   //validate request
   if (!fromAccount || !toAccount || !amount || !idempotanceKey) {
+
     return res.status(400).json({
       message: "fromAccount, toAccount, amount, idempotanceKey are required",
     });
@@ -26,6 +27,14 @@ async function createTransaction(req, res) {
       message: "Sender and receiver account cannot be same",
     });
   }
+  if (
+    !mongoose.Types.ObjectId.isValid(fromAccount) ||
+    !mongoose.Types.ObjectId.isValid(toAccount)
+  ) {
+    return res.status(400).json({
+      message: "Invalid sender or receiver account ID",
+    });
+  }
   const senderAccount = await accountModel.findOne({
     _id: fromAccount,
   });
@@ -33,10 +42,20 @@ async function createTransaction(req, res) {
     .findOne({
       _id: toAccount,
     })
-    .populate("user");
+    .populate({
+      path: "user",
+      select: "+systemUser",
+    });
+
   if (!senderAccount || !reciverAccount) {
     return res.status(400).json({
-      message: "invald sender or reciver account",
+      message: "Invalid sender or receiver account",
+    });
+  }
+  //can not transaffer amount to system user
+  if (reciverAccount.user.systemUser) {
+    return res.status(400).json({
+      message: "System user cannot receive transactions",
     });
   }
   //validate idempotancy key
@@ -91,36 +110,37 @@ async function createTransaction(req, res) {
   try {
     session.startTransaction();
     //creating transaction
-    const transaction = await transactionModel.create(
-      {
-        fromAccount,
-        toAccount,
-        amount,
-        idempotanceKey,
-        status: "PENDING",
-      },
-      { session },
-    );
+    const transaction = new transactionModel.create({
+      fromAccount,
+      toAccount,
+      amount,
+      idempotanceKey,
+      status: "PENDING",
+    });
     //creating document of debit ledger for sender account
     const debitledgerEntry = await ledgerModel.create(
-      {
-        account: senderAccount._id,
-        amount: amount,
-        transaction: transaction._id,
-        type: "DEBIT",
-      },
+      [
+        {
+          account: senderAccount._id,
+          amount: amount,
+          transaction: transaction._id,
+          type: "DEBIT",
+        },
+      ],
       {
         session,
       },
     );
     //creating document of credit ledger for reciver account
     const creditledgerEntry = await ledgerModel.create(
-      {
-        account: reciverAccount._id,
-        amount: amount,
-        transaction: transaction._id,
-        type: "CREDIT",
-      },
+      [
+        {
+          account: reciverAccount._id,
+          amount: amount,
+          transaction: transaction._id,
+          type: "CREDIT",
+        },
+      ],
       {
         session,
       },
@@ -192,52 +212,82 @@ async function createIntialFunds(req, res) {
   }
   //now system user account
   const systemUserAccount = await accountModel.findOne({
-    systemUser: true,
-    _id: req.user._id,
+    user: req.user._id,
   });
   if (!systemUserAccount) {
     return res.status(400).json({
       message: "System User not found",
     });
   }
-  const session = mongoose.startSession;
+  const isTransactionalreadyExist = await transactionModel.findOne({
+    idempotanceKey: idempotanceKey,
+  });
+  if (isTransactionalreadyExist) {
+    if (isTransactionalreadyExist.status === "COMPLETED") {
+      return res.status(200).json({
+        message: "transaction completed",
+        transaction: isTransactionalreadyExist,
+      });
+    }
+    if (isTransactionalreadyExist.status === "PENDING") {
+      return res.status(200).json({
+        message: "transaction is in processing",
+      });
+    }
+    if (isTransactionalreadyExist.status === "FAILED") {
+      return res.status(500).json({
+        message: "transaction Failed Please try again",
+      });
+    }
+    if (isTransactionalreadyExist.status === "REVERSED") {
+      return res.status(500).json({
+        message: "transaction reverse please retry",
+      });
+    }
+  }
+  const session = await mongoose.startSession();
+
   try {
-    session.startTransaction;
-    const transaction = await transactionModel.create(
-      {
-        fromAccount: systemUserAccount._id,
-        toAccount,
-        idempotanceKey,
-        status: "PENDING",
-      },
-      { session },
-    );
+    session.startTransaction();
+    const transaction = new transactionModel({
+      fromAccount: systemUserAccount._id,
+      toAccount,
+      amount,
+      idempotanceKey,
+      status: "PENDING",
+    });
     //creating document of debit ledger for sender account
     const debitledgerEntry = await ledgerModel.create(
-      {
-        account: systemUserAccount._id,
-        amount: amount,
-        transaction: transaction._id,
-        type: "DEBIT",
-      },
+      [
+        {
+          account: systemUserAccount._id,
+          amount: amount,
+          transaction: transaction._id,
+          type: "DEBIT",
+        },
+      ],
       {
         session,
       },
     );
     //creating document of credit ledger for reciver account
     const creditledgerEntry = await ledgerModel.create(
-      {
-        account: reciverAccount._id,
-        amount: amount,
-        transaction: transaction._id,
-        type: "CREDIT",
-      },
+      [
+        {
+          account: reciverAccount._id,
+          amount: amount,
+          transaction: transaction._id,
+          type: "CREDIT",
+        },
+      ],
       {
         session,
       },
     );
+
     transaction.status = "COMPLETED";
     await transaction.save({ session });
+
     await session.commitTransaction();
     return res.status(201).json({
       message: "Transaction completed successfully",

@@ -35,7 +35,7 @@ const userSchema = new mongoose.Schema(
     },
     systemUser: {
       type: Boolean,
-      defualt: false,
+      default: false,
       immutable: true,
       select: false,
     },

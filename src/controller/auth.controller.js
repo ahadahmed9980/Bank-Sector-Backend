@@ -27,6 +27,8 @@ async function userRegister(req, res) {
       name,
       email,
       password,
+      
+  
     });
     //gen otp
     const otp = generateOtp();
