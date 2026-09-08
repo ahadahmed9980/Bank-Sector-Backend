@@ -135,6 +135,7 @@ async function userLogin(req, res) {
       user: {
         id: user._id,
         email: user.email,
+        system: user.systemUser,
       },
       refreshToken: refreshToken,
       accessToken: accessToken,

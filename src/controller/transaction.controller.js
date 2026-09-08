@@ -4,8 +4,6 @@ const {
   sendDebitAlert,
   sendCreditAlert,
 } = require("../services/email.service");
-
-const userModel = require("../models/user.model");
 const ledgerModel = require("../models/leager.model");
 const accountModel = require("../models/account.model");
 async function createTransaction(req, res) {
@@ -16,13 +14,13 @@ async function createTransaction(req, res) {
       message: "fromAccount, toAccount, amount, idempotanceKey are required",
     });
   }
-  //amount validation 
+  //amount validation
   if (amount <= 0) {
-  return res.status(400).json({
-    message: "Amount must be greater than 0",
-  });
-}
-//same account check 
+    return res.status(400).json({
+      message: "Amount must be greater than 0",
+    });
+  }
+  //same account check
   if (fromAccount === toAccount) {
     return res.status(400).json({
       message: "Sender and receiver account cannot be same",
@@ -31,9 +29,11 @@ async function createTransaction(req, res) {
   const senderAccount = await accountModel.findOne({
     _id: fromAccount,
   });
-  const reciverAccount = await accountModel.findOne({
-    _id: toAccount,
-  }).populate("user");
+  const reciverAccount = await accountModel
+    .findOne({
+      _id: toAccount,
+    })
+    .populate("user");
   if (!senderAccount || !reciverAccount) {
     return res.status(400).json({
       message: "invald sender or reciver account",
@@ -130,32 +130,32 @@ async function createTransaction(req, res) {
     await session.commitTransaction();
     //sending email for debit alert
     //sending email for credit alert
-  //  Promise.all([
-      // 1. Sender ko Debit Email
-     sendDebitAlert({
-  senderEmail: req.user.email,
-  senderName: req.user.name,
-  amount: transaction.amount,
-  transactionId: transaction._id.toString(),
-  receiverName: reciverAccount.user.name,
-}).catch((err) => {
-  console.log("Debit email failed:", err);
-});
+    //  Promise.all([
+    // 1. Sender ko Debit Email
+    sendDebitAlert({
+      senderEmail: req.user.email,
+      senderName: req.user.name,
+      amount: transaction.amount,
+      transactionId: transaction._id.toString(),
+      receiverName: reciverAccount.user.name,
+    }).catch((err) => {
+      console.log("Debit email failed:", err);
+    });
 
-sendCreditAlert({
-  receiverEmail: reciverAccount.user.email,
-  receiverName: reciverAccount.user.name,
-  amount: transaction.amount,
-  transactionId: transaction._id.toString(),
-  senderName: req.user.name,
-}).catch((err) => {
-  console.log("Credit email failed:", err);
-});
+    sendCreditAlert({
+      receiverEmail: reciverAccount.user.email,
+      receiverName: reciverAccount.user.name,
+      amount: transaction.amount,
+      transactionId: transaction._id.toString(),
+      senderName: req.user.name,
+    }).catch((err) => {
+      console.log("Credit email failed:", err);
+    });
 
-return res.status(201).json({
-  message: "Transaction completed successfully",
-  transaction,
-});
+    return res.status(201).json({
+      message: "Transaction completed successfully",
+      transaction,
+    });
   } catch (err) {
     console.log(err);
     await session.abortTransaction();
@@ -166,4 +166,92 @@ return res.status(201).json({
     await session.endSession();
   }
 }
-module.exports = { createTransaction };
+//intial funds transffer account
+async function createIntialFunds(req, res) {
+  const { toAccount, amount, idempotanceKey } = req.body;
+  //validate request
+  if (!toAccount || !amount || !idempotanceKey) {
+    return res.status(400).json({
+      message: "fromAccount, toAccount, amount, idempotanceKey are required",
+    });
+  }
+  if (amount <= 0) {
+    return res.status(400).json({
+      message: "Amount must be greater than 0",
+    });
+  }
+  const reciverAccount = await accountModel
+    .findOne({
+      _id: toAccount,
+    })
+    .populate("user");
+  if (!reciverAccount) {
+    return res.status(400).json({
+      message: "invald sender or reciver account",
+    });
+  }
+  //now system user account
+  const systemUserAccount = await accountModel.findOne({
+    systemUser: true,
+    _id: req.user._id,
+  });
+  if (!systemUserAccount) {
+    return res.status(400).json({
+      message: "System User not found",
+    });
+  }
+  const session = mongoose.startSession;
+  try {
+    session.startTransaction;
+    const transaction = await transactionModel.create(
+      {
+        fromAccount: systemUserAccount._id,
+        toAccount,
+        idempotanceKey,
+        status: "PENDING",
+      },
+      { session },
+    );
+    //creating document of debit ledger for sender account
+    const debitledgerEntry = await ledgerModel.create(
+      {
+        account: systemUserAccount._id,
+        amount: amount,
+        transaction: transaction._id,
+        type: "DEBIT",
+      },
+      {
+        session,
+      },
+    );
+    //creating document of credit ledger for reciver account
+    const creditledgerEntry = await ledgerModel.create(
+      {
+        account: reciverAccount._id,
+        amount: amount,
+        transaction: transaction._id,
+        type: "CREDIT",
+      },
+      {
+        session,
+      },
+    );
+    transaction.status = "COMPLETED";
+    await transaction.save({ session });
+    await session.commitTransaction();
+    return res.status(201).json({
+      message: "Transaction completed successfully",
+      transaction,
+    });
+  } catch (err) {
+    console.log(err);
+    await session.abortTransaction();
+    return res.status(500).json({
+      message: "error while doing transaction from system user",
+    });
+  } finally {
+    await session.endSession();
+  }
+}
+
+module.exports = { createTransaction, createIntialFunds };
