@@ -8,4 +8,11 @@ router.post(
   authMiddleware.authMiddleware,
   accountController.createAccount,
 );
+//get user balance
+router.get(
+  "/balance/:accountId",
+  authMiddleware.authMiddleware,
+  accountController.getAccountBalanceController,
+);
+
 module.exports = router;

@@ -8,7 +8,6 @@ async function createAccount(req, res) {
       });
     }
 
-    const { currency } = req.body;
     const isExist = await accountModel.findOne({ user: req.user._id });
     if (isExist) {
       return res.status(409).json({
@@ -19,7 +18,7 @@ async function createAccount(req, res) {
 
     const account = await accountModel.create({
       user: req.user._id,
-      currency: currency || "PKR",
+      currency: "PKR",
     });
 
     return res.status(201).json({
@@ -34,5 +33,24 @@ async function createAccount(req, res) {
     });
   }
 }
+//get user balance from account
+async function getAccountBalanceController(req, res) {
+  const { accountId } = req.params;
+  const account = await accountModel.findOne({
+    _id: accountId,
+    user: req.user._id,
+  });
 
-module.exports = { createAccount };
+  if (!account) {
+    return res.status(404).json({
+      message: "Account not found",
+    });
+  }
+  const balance = await account.getBalance();
+  return res.status(200).json({
+    message: "user balance fetched successfully",
+    userBalance: balance,
+  });
+}
+
+module.exports = { createAccount,getAccountBalanceController };

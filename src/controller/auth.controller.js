@@ -19,7 +19,7 @@ async function userRegister(req, res) {
       email,
     });
     if (isExist) {
-      return res.status(409).json({
+      return res.status(401).json({
         message: "user already exist",
       });
     }
@@ -27,8 +27,6 @@ async function userRegister(req, res) {
       name,
       email,
       password,
-      
-  
     });
     //gen otp
     const otp = generateOtp();
@@ -75,19 +73,19 @@ async function userLogin(req, res) {
       email,
     });
     if (!user) {
-      return res.status(409).json({
+      return res.status(401).json({
         message: "user not found register please!",
       });
     }
     if (!user.verified) {
-      return res.status(409).json({
+      return res.status(401).json({
         message: "email is not verified",
       });
     }
     //if user found
     const isValid = await user.comparePassword(password);
     if (!isValid) {
-      return res.status(409).json({
+      return res.status(401).json({
         message: "password is incorrect!",
       });
     }
@@ -125,7 +123,7 @@ async function userLogin(req, res) {
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
 
-      secure: false, // Localhost HTTP ke liye
+   secure: process.env.NODE_ENV === "production",
 
       sameSite: "lax",
 
@@ -310,7 +308,7 @@ async function resendOtp(req, res) {
     const otp = generateOtp();
     const html = getOtpHtml(otp);
     const otpHash = await bcrypt.hash(otp, 10);
-    otpModel.create({
+   await otpModel.create({
       email: user.email,
       user: user._id,
       otpHash: otpHash,
@@ -332,10 +330,128 @@ async function resendOtp(req, res) {
   }
 }
 
+//logout
+async function logout(req, res) {
+  // 1. Variable assign karein aur optional chaining lagayein
+  const incomingRefreshToken =
+    req.cookies?.refreshToken ||
+    req.body?.refreshToken ||
+    (req.headers.authorization?.startsWith("Bearer ")
+      ? req.headers.authorization.split(" ")[1]
+      : null);
+
+  if (!incomingRefreshToken) {
+    return res.status(401).json({
+      message: "Refresh token is required",
+    });
+  }
+
+  try {
+    // 2. incomingRefreshToken pass karein
+    const decoded = jwt.verify(incomingRefreshToken, process.env.JWT_SECRET);
+
+    const session = await sessionModel.findOne({
+      _id: decoded.sessionId,
+    });
+
+    if (!session) {
+      return res.status(401).json({
+        message: "Invalid refresh token: session not found",
+      });
+    }
+
+    if (session.revoke === true) {
+      return res.status(400).json({
+        message: "Already logged out",
+      });
+    }
+
+    // 3. Hash verification
+    const isMatch = await session.verifyToken(incomingRefreshToken);
+    if (!isMatch) {
+      return res.status(401).json({
+        message: "Invalid refresh token",
+      });
+    }
+
+    // 4. Session revoke & Cookie clear
+    session.revoke = true;
+    session.revokedAt = new Date();
+    await session.save();
+
+    res.clearCookie("refreshToken", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+    });
+
+    return res.status(200).json({
+      message: "Logout successfully",
+    });
+  } catch (err) {
+    console.error("Logout error:", err);
+    return res.status(400).json({
+      message: "Invalid or expired refresh token",
+    });
+  }
+}
+//logout all device
+async function logoutAll(req, res) {
+  const incomingRefreshToken =
+    req.cookies?.refreshToken ||
+    req.body?.refreshToken ||
+    (req.headers.authorization?.startsWith("Bearer ")
+      ? req.headers.authorization.split(" ")[1]
+      : null);
+
+  if (!incomingRefreshToken) {
+    return res.status(401).json({
+      message: "Refresh token is required",
+    });
+  }
+
+  try {
+    const decoded = jwt.verify(incomingRefreshToken, process.env.JWT_SECRET);
+
+    // Token payload mein user ki ID jis bhi key se save ho (userId ya id)
+    const userId = decoded.userId || decoded.id;
+
+    await sessionModel.updateMany(
+      {
+        userId: userId,
+        revoke: false,
+      },
+      {
+        revoke: true,
+      },
+    );
+
+    const cookieOptions = {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+    };
+
+    res.clearCookie("accessToken", cookieOptions);
+    res.clearCookie("refreshToken", cookieOptions);
+
+    return res.status(200).json({
+      message: "Logged out from all devices successfully",
+    });
+  } catch (err) {
+    console.error("Logout all error:", err);
+    return res.status(400).json({
+      message: "Invalid or expired refresh token",
+    });
+  }
+}
+
 module.exports = {
   userRegister,
   userLogin,
   verifyEmail,
   resendOtp,
   rotateRefreshToken,
+  logout,
+  logoutAll,
 };

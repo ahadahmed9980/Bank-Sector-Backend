@@ -22,6 +22,11 @@ const sessionSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    revokedAt: {
+      type: Date,
+      default: null,
+      index: { expires: 300 }, // 300 seconds = 5 minutes baad document delete ho jayega
+    },
   },
   {
     timestamps: true,
