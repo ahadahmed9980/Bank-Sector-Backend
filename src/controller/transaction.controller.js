@@ -138,9 +138,7 @@ async function createTransaction(req, res) {
           session,
         },
       );
-      await (() => {
-        return new Promise((resolve) => setTimeout(resolve, 10 * 1000));
-      })();
+  
       //creating document of credit ledger for reciver account
       const creditledgerEntry = await ledgerModel.create(
         [
