@@ -82,7 +82,9 @@ async function userLogin(req, res) {
         message: "email is not verified",
       });
     }
-    //if user found
+    //if user found then 
+
+    
     const isValid = await user.comparePassword(password);
     if (!isValid) {
       return res.status(401).json({
